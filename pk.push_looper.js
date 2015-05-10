@@ -259,10 +259,6 @@ function poll() {
     push.pollCheck.schedule(1);
 }
 
-function free() {
-//    push.destroy();
-//    push = null;
-}
 
 function release() {
     push.releaseGrid();
@@ -279,6 +275,10 @@ function clear() {
 
 function set_pk() {
     push.setPK();
+}
+
+function midi(note, vel) {
+    log('midi: ', note, vel);
 }
 
 var bPolling = false;
