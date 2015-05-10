@@ -81,6 +81,7 @@ function Push(options) {
         this.pollCheck = new Task(doPoll);
         this.pollCheck.schedule(500);
         
+        // the regular polling task
         this.pollRepeat = new Task(doPoll);
         this.pollRepeat.interval = 1000;
     }
@@ -299,11 +300,6 @@ inlets = 1;
 outlets = 1;
 
 
-function blankPush() {
-    push.releaseGrid();
-    push.setImage(BLANK_IMAGE);
-}
-
 function onLevelMeter(x, y, z) {
     if(x[0] == 'output_meter_left' && x[1] != 'bang') {
         var level = x[1];
@@ -333,20 +329,75 @@ function onLevelMeter(x, y, z) {
     }
 }
 
+function onLooperChange(x) {
+    if(x[0] == 'value' && this.track_index !== undefined) {
+        var value = x[1];
+        if(this.get('name') == 'State') {
+            if(value == 0) { // stop
+                push.setButton(this.track_index, 0, this.bBufferFilled ? 123 : 0)
+                push.setButton(this.track_index, 1, this.bBufferFilled ? 7 : 0)
+                push.setButton(this.track_index, 2, this.bBufferFilled ? 7 : 0)
+            } else if(value == 1) { // rec
+                push.setButton(this.track_index, 0, 5)
+                push.setButton(this.track_index, 1, 5)
+                push.setButton(this.track_index, 2, 7)
+            } else if(value == 2) { // play
+                push.setButton(this.track_index, 0, 21)
+                push.setButton(this.track_index, 1, 5)
+                push.setButton(this.track_index, 2, 7)
+            } else if(value == 3) { // dub
+            }
+        } else if(this.get('name') == 'Reverse') {
+            push.setButton(this.track_index, 3, value ? 45 : 43); // 43 is light blue;
+        }
+    }
+}
+
+
+function blankPush() {
+//    push.releaseGrid();
+    push.setImage(BLANK_IMAGE);
+}
+
+
+
 var DEV_NAME = 'Push';
 var push = new Push({
     onLiveAPIInit: function() {
-        var loopers = FindDevices({
+        var foundLoopers = FindDevices({
             type: 'Looper'
         });
+        var loopers = {};
         var levels = {};
-        for(var track in loopers) {
-            var index = loopers[track];
-            var path = 'live_set tracks ' + index;
+        for(var track in foundLoopers) {
+            // observe loopers
+            var looper = {};
+            looper.looper = new LiveAPI('id ' + foundLoopers[track]);
+            looper.bBufferFilled = false;
+            var param = new LiveAPI(onLooperChange);
+            var params = looper.looper.get('parameters');
+            for(var i=0; i < params.length ; i++) {
+                if(params[i] != 'id') {
+                    param.id = params[i];
+                    if(param.get('name') == 'State') {
+                        looper.state = param;
+                        looper.state.property = 'value';
+                        looper.state.track_index = track;
+                        param = new LiveAPI(onLooperChange);
+                    } else if(param.get('name') == 'Reverse') {
+                        looper.reverse = param;
+                        looper.reverse.property = 'value';
+                        looper.reverse.track_index = track;
+                        param = new LiveAPI(onLooperChange);
+                    }
+                }
+            }
+            loopers[track] = looper;
+            // observe level meters
             var observer = new LiveAPI(onLevelMeter, 'live_set tracks ' + track);
             observer.property = 'output_meter_left';
             observer.track_index = track;
-            levels[index] = observer;
+            levels[track] = observer;
         }
     },
     onPushFound: function() {
