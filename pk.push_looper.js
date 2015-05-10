@@ -28,7 +28,30 @@ function log() {
   post("\n");
 }
 
- 
+
+
+var PK_IMAGE = [
+    [5, 5, 5, 0, 5, 0, 0, 5],
+    [5, 0, 0, 5, 5, 0, 5, 0],
+    [5, 0, 0, 5, 5, 5, 5, 0],
+    [5, 5, 5, 0, 5, 5, 0, 0],
+    [5, 0, 0, 0, 5, 5, 0, 0],
+    [5, 0, 0, 0, 5, 0, 5, 0],
+    [5, 0, 0, 0, 5, 0, 0, 5],
+    [5, 0, 0, 0, 5, 0, 0, 5],
+];
+
+
+var BLANK_IMAGE = [
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+];
 
 function Push(options) {
 
@@ -36,6 +59,7 @@ function Push(options) {
 
     this.init = function() {
         this.bLiveAPIInit = false;
+        this.bPushFound = false;
         this.api = null;
         this.grid = null;
         this.gridGrabbed = false;
@@ -69,7 +93,6 @@ function Push(options) {
                     exists = true;
                 } else if(!this.api || this.api.id != api.id) {
                     this.api = api;
-		                log('*** Push connected, id: ' + api.id + ', path: ' + api.path);
                     var gridId = this.api.call('get_control_by_name', 'Button_Matrix');
                     this.grid = new LiveAPI(function(x, y, z) {
                         if(x[0] == 'value' && x[1] != 'bang' && options.onButtonEvent) {
@@ -79,19 +102,28 @@ function Push(options) {
                     this.grid.id = gridId[1];
                     this.grid.property = 'value';
                     exists = true;
+                    if(this.bPushFound == false) {
+                        this.bPushFound = true;
+                        if(options.onPushFound) {
+                            options.onPushFound();
+                        }
+                    }
+                    if(options.onPushConnected) {
+                        options.onPushConnected();
+                    }
                 }
             }
 	      }
         if(!exists && this.api) {
-            log('*** Push disconnected');
             this.api = null;
             this.grid = null;
+            if(options.onPushDisconnected) {
+                options.onPushDisconnected();
+            }
         }
     }
 
-
     this.destroy = function() {
-        log('Push.destroy()');
         this.releaseGrid();
         this.dead = true;
     };
@@ -116,7 +148,7 @@ function Push(options) {
 
     this.clearAllButtons = function() {
         for(var i=0; i < 8; i++) {
-            for(var j=0; i < 8; i++) {
+            for(var j=0; j < 8; j++) {
                 this.setButton(i, j, 0);
             }
         }
@@ -141,9 +173,23 @@ function Push(options) {
             var row = this.gridData[i];
             for(var j=0; j < row.length; j++) {
                 var x = row[j];
-                this.setButton(i, j, x);
+                this.setButton(j, i, x);
             }
         }
+    }
+
+    this.setImage = function(data) {
+        for(var i=0; i < data.length; i++) {
+            var row = data[i];
+            for(var j=0; j < row.length; j++) {
+                var x = row[j];
+                this.setButton(j, i, x);
+            }
+        }
+    }
+
+    this.setPK = function() {
+        this.setImage(PK_IMAGE);
     }
 
     this.init();
@@ -185,13 +231,12 @@ function FindDevices(options) {
     }
 
     var ret = {};
-    var root = 'live_set';
-    var api = new LiveAPI(root);
+    var api = new LiveAPI('live_set');
     var iCurrentTrack;
     var nTracks = api.getcount('tracks');
     for(var i=0; i < nTracks; i++) {
         iCurrentTrack = i;
-        doTrack(api, root + ' tracks ' + i);
+        doTrack(api, 'live_set tracks ' + i);
     }
     return ret;
 }
@@ -222,6 +267,10 @@ function clear() {
     push.clearAllButtons();
 }
 
+function set_pk() {
+    push.setPK();
+}
+
 function doPoll() {
     push.poll();
     if(bPolling == false) {
@@ -229,6 +278,7 @@ function doPoll() {
         bPolling = true;
     }
 }
+doPoll.local = true;
 
 
 log("___________________________________________________");
@@ -238,16 +288,69 @@ autowatch = 1;
 inlets = 1;
 outlets = 1;
 
+
+function blankPush() {
+    push.releaseGrid();
+    push.setImage(BLANK_IMAGE);
+}
+
+function onLevelMeter(x, y, z) {
+    if(x[0] == 'output_meter_left' && x[1] != 'bang') {
+        var level = x[1];
+        var color = 0;
+        var nCells = 0;
+        if(level == 0) {
+            color = 0;
+            nCells = 0;
+        }
+        if(level <= 0.3) {
+            color = 86;
+            nCells = 1;
+        } else if (level <= 0.5) {
+            color = 13;
+            nCells = 2;
+        } else if (level <= 0.9) {
+            color = 84;
+            nCells = 3;
+        } else {
+            color = 5; // peak
+            nCells = 4;
+        }
+        for(var row=7; row >= 4; row--) {
+            var isLit = row > (7 - nCells);
+            push.setButton(this.track_index, row, isLit ? color : 0);
+        }
+    }
+}
+
 var DEV_NAME = 'Push';
 var push = new Push({
     onLiveAPIInit: function() {
         var loopers = FindDevices({
             type: 'Looper'
         });
+        var levels = {};
         for(var track in loopers) {
             var index = loopers[track];
-            log('FOUND ' + index + ', ' + track);
+            var path = 'live_set tracks ' + index;
+            var observer = new LiveAPI(onLevelMeter, 'live_set tracks ' + track);
+            observer.property = 'output_meter_left';
+            observer.track_index = track;
+            levels[index] = observer;
         }
+    },
+    onPushFound: function() {
+		    log('*** Push found');
+        push.grabGrid();
+        push.setImage(PK_IMAGE);
+        var blankTask = new Task(blankPush);
+        blankTask.schedule(1000);
+    },
+    onPushConnected: function() {
+		    log('*** Push connected');
+    },
+    onPushDisconnected: function() {
+        log('*** Push disconnected');
     },
     onButtonEvent: function(velocity, x, y) {
         log('onButtonEvent: ', velocity, x, y);
