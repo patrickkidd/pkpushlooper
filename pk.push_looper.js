@@ -1,12 +1,9 @@
 /*
  TODO
- - grab button input
- - detect loopers
  - listen for session button, then session-x-offset
  - set up looper tracks in grid
 
  FORUMS
- - callback for live api initialized? f.ex internal version of [live.thisdevice]. kind of annoying...
  - call js function on [freebang]? Max freezes up...
 */
 
@@ -38,6 +35,7 @@ function Push(options) {
     options = typeof options !== 'undefined' ? options : {};
 
     this.init = function() {
+        this.bLiveAPIInit = false;
         this.api = null;
         this.grid = null;
         this.gridGrabbed = false;
@@ -56,6 +54,12 @@ function Push(options) {
 
     // keep the live object updated
     this.poll = function() {
+        if(this.bLiveAPIInit == false) {
+            this.bLiveAPIInit = true;
+            if(options.onLiveAPIInit) {
+                options.onLiveAPIInit();
+            }
+        }
         var exists = false;
 	      for(var i=0; i < 6; i++) {
 		        var api = new LiveAPI("control_surfaces " + i);
@@ -146,6 +150,54 @@ function Push(options) {
 }
 
 
+
+function FindDevices(options) {
+
+    function doTrack(api, path) {
+        api.path = path;
+        var nDevices = api.getcount('devices');
+        for(var i=0; i < nDevices; i++) {
+            doDevice(api, path + ' devices ' + i);
+        }
+    }
+
+    function doDevice(api, path) {
+        api.path = path;
+        if(api.get('class_name') == options.type) {
+            if(ret[iCurrentTrack] == undefined) { // keep it simple and only add the first match
+                ret[iCurrentTrack] = api.id;
+            }
+        }
+        if(api.children.indexOf('chains') > -1) {
+            var nChains = api.getcount('chains');
+            for(var i=0; i < nChains; i++) {
+                doChain(api, path + ' chains ' + i)
+            }
+        }
+    }
+
+    function doChain(api, path) {
+        api.path = path
+        var nDevices = api.getcount('devices');
+        for(var i=0; i < nDevices; i++) {
+            doDevice(api, path + ' devices ' + i);
+        }
+    }
+
+    var ret = {};
+    var root = 'live_set';
+    var api = new LiveAPI(root);
+    var iCurrentTrack;
+    var nTracks = api.getcount('tracks');
+    for(var i=0; i < nTracks; i++) {
+        iCurrentTrack = i;
+        doTrack(api, root + ' tracks ' + i);
+    }
+    return ret;
+}
+
+
+
 // public api
 
 function poll() {
@@ -188,6 +240,15 @@ outlets = 1;
 
 var DEV_NAME = 'Push';
 var push = new Push({
+    onLiveAPIInit: function() {
+        var loopers = FindDevices({
+            type: 'Looper'
+        });
+        for(var track in loopers) {
+            var index = loopers[track];
+            log('FOUND ' + index + ', ' + track);
+        }
+    },
     onButtonEvent: function(velocity, x, y) {
         log('onButtonEvent: ', velocity, x, y);
     }
@@ -198,7 +259,7 @@ var push = new Push({
 // in case we are in js dev mode and no [live.thisdevice] bang is coming.
 // if a [live.thisdevice] bang already came then running it again won't hurt.
 var pollCheck = new Task(doPoll, this);
-pollCheck.schedule(250);
+pollCheck.schedule(500);
 
 var bPolling = false;
 var pollRepeat = new Task(doPoll, this);
