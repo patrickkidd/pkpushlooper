@@ -74,6 +74,15 @@ function Push(options) {
             [0, 0, 0, 0, 0, 0, 0, 0],
         ];
         this.dead = false;
+        
+        // just check a little time after the live api might be initialized
+        // in case we are in js dev mode and no [live.thisdevice] bang is coming.
+        // if a [live.thisdevice] bang already came then running it again won't hurt.
+        this.pollCheck = new Task(doPoll);
+        this.pollCheck.schedule(500);
+        
+        this.pollRepeat = new Task(doPoll);
+        this.pollRepeat.interval = 1000;
     }
 
     // keep the live object updated
@@ -246,7 +255,7 @@ function FindDevices(options) {
 // public api
 
 function poll() {
-    pollCheck.schedule(1);
+    push.pollCheck.schedule(1);
 }
 
 function free() {
@@ -271,10 +280,11 @@ function set_pk() {
     push.setPK();
 }
 
+var bPolling = false;
 function doPoll() {
     push.poll();
     if(bPolling == false) {
-        pollRepeat.repeat();
+        push.pollRepeat.repeat();
         bPolling = true;
     }
 }
@@ -303,7 +313,7 @@ function onLevelMeter(x, y, z) {
             color = 0;
             nCells = 0;
         }
-        if(level <= 0.3) {
+        else if(level <= 0.3) {
             color = 86;
             nCells = 1;
         } else if (level <= 0.5) {
@@ -357,14 +367,4 @@ var push = new Push({
     }
 });
 
-
-// just check a little time after the live api might be initialized
-// in case we are in js dev mode and no [live.thisdevice] bang is coming.
-// if a [live.thisdevice] bang already came then running it again won't hurt.
-var pollCheck = new Task(doPoll, this);
-pollCheck.schedule(500);
-
-var bPolling = false;
-var pollRepeat = new Task(doPoll, this);
-pollRepeat.interval = 1000;
 
