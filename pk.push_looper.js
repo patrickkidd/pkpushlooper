@@ -300,75 +300,82 @@ inlets = 1;
 outlets = 1;
 
 
-function onLevelMeter(x, y, z) {
-    if(x[0] == 'output_meter_left' && x[1] != 'bang') {
-        var level = x[1];
-        var color = 0;
-        var nCells = 0;
-        if(level == 0) {
-            color = 0;
-            nCells = 0;
-        }
-        else if(level <= 0.3) {
-            color = 86;
-            nCells = 1;
-        } else if (level <= 0.5) {
-            color = 13;
-            nCells = 2;
-        } else if (level <= 0.9) {
-            color = 84;
-            nCells = 3;
-        } else {
-            color = 5; // peak
-            nCells = 4;
-        }
-        for(var row=7; row >= 4; row--) {
-            var isLit = row > (7 - nCells);
-            push.setButton(this.track_index, row, isLit ? color : 0);
-        }
-    }
-}
-
-function onLooperChange(x) {
-    if(x[0] == 'value' && this.track_index !== undefined) {
-        var value = x[1];
-        if(this.get('name') == 'State') {
-            if(value == 0) { // stop
-                push.setButton(this.track_index, 0, this.bBufferFilled ? 123 : 0)
-                push.setButton(this.track_index, 1, this.bBufferFilled ? 7 : 0)
-                push.setButton(this.track_index, 2, this.bBufferFilled ? 7 : 0)
-            } else if(value == 1) { // rec
-                push.setButton(this.track_index, 0, 5)
-                push.setButton(this.track_index, 1, 5)
-                push.setButton(this.track_index, 2, 7)
-            } else if(value == 2) { // play
-                push.setButton(this.track_index, 0, 21)
-                push.setButton(this.track_index, 1, 5)
-                push.setButton(this.track_index, 2, 7)
-            } else if(value == 3) { // dub
-            }
-        } else if(this.get('name') == 'Reverse') {
-            push.setButton(this.track_index, 3, value ? 45 : 43); // 43 is light blue;
-        }
-    }
-}
 
 
 function blankPush() {
 //    push.releaseGrid();
     push.setImage(BLANK_IMAGE);
 }
-
+blankPush.local = 1;
 
 
 var DEV_NAME = 'Push';
-var push = new Push({
+var app = {
+
+    // part this out to also call from repaintAll
+    _paintLooperPart: function(track_index, name, value) {
+        var iTrack = track_index - app.track_offset;
+        log('_paintLooperPart', track_index, name, value, iTrack);
+        if(iTrack >= 0) { // ignore off-screen
+            if(name == 'State') {
+                if(value == 0) { // stop
+                    push.setButton(iTrack, 0, this.bBufferFilled ? 123 : 0)
+                    push.setButton(iTrack, 1, this.bBufferFilled ? 7 : 0)
+                    push.setButton(iTrack, 2, this.bBufferFilled ? 7 : 0)
+                } else if(value == 1) { // rec
+                    push.setButton(iTrack, 0, 5)
+                    push.setButton(iTrack, 1, 5)
+                    push.setButton(iTrack, 2, 7)
+                } else if(value == 2) { // play
+                    log('here');
+                    push.setButton(iTrack, 0, 21)
+                    push.setButton(iTrack, 1, 5)
+                    push.setButton(iTrack, 2, 7)
+                } else if(value == 3) { // dub
+                }
+            } else if(name == 'Reverse') {
+                push.setButton(iTrack, 3, value ? 45 : 43); // 43 is light blue;
+            }
+        }
+    },
+
     onLiveAPIInit: function() {
-        var foundLoopers = FindDevices({
-            type: 'Looper'
-        });
-        var loopers = {};
-        var levels = {};
+        function onLooperChange(x) {
+            if(x[0] == 'value' && this.track_index !== undefined) {
+                app._paintLooperPart(this.track_index, this.get('name'), x[1]);
+            }
+        }
+        function onLevelMeter(x, y, z) {
+            if(x[0] == 'output_meter_left' && x[1] != 'bang') {
+                var level = x[1];
+                var color = 0;
+                var nCells = 0;
+                if(level == 0) {
+                    color = 0;
+                    nCells = 0;
+                }
+                else if(level <= 0.3) {
+                    color = 86;
+                    nCells = 1;
+                } else if (level <= 0.5) {
+                    color = 13;
+                    nCells = 2;
+                } else if (level <= 0.9) {
+                    color = 84;
+                    nCells = 3;
+                } else {
+                    color = 5; // peak
+                    nCells = 4;
+                }
+                for(var row=7; row >= 4; row--) {
+                    var isLit = row > (7 - nCells);
+                    push.setButton(this.track_index + app.track_offset, row, isLit ? color : 0);
+                }
+            }
+        }
+        var foundLoopers = FindDevices({ type: 'Looper' });
+        this.loopers = {};
+        this.levels = {};
         for(var track in foundLoopers) {
             // observe loopers
             var looper = {};
@@ -392,12 +399,12 @@ var push = new Push({
                     }
                 }
             }
-            loopers[track] = looper;
+            this.loopers[track] = looper;
             // observe level meters
             var observer = new LiveAPI(onLevelMeter, 'live_set tracks ' + track);
             observer.property = 'output_meter_left';
             observer.track_index = track;
-            levels[track] = observer;
+            this.levels[track] = observer;
         }
     },
     onPushFound: function() {
@@ -409,13 +416,80 @@ var push = new Push({
     },
     onPushConnected: function() {
 		    log('*** Push connected');
+        this.session_component = null;
+        this.track_offset = 0;
+        var pollSessionTask = new Task(function() {
+            var x = push.api.call('highlighting_session_component');
+            if(x[0] == 'id' && x[1] != 0) {
+                app.session_component = new LiveAPI('id ' + x[1]);
+            }
+        });
+        pollSessionTask.schedule(0);
+        function onControl(x) {
+            if(x[0] == 'value' && x[1] != 'bang' && x[1] > 0) {
+                var value = x[1];
+                var name = this.get('name');
+                if(name == 'Left_Arrow' || name == 'Right_Arrow') {
+                    if(app.session_component) {
+                        var track_offset = app.session_component.call('track_offset');
+                        if(track_offset != app.track_offset) {
+                            app.track_offset = track_offset;
+                            app.repaintAll();
+                        }
+                    }
+                } else if(name == 'Session_Mode_Button' || name == 'Note_Mode_Button') {
+                    // created upon entering session mode
+                    if(app.session_component == null) {
+                        pollSessionTask.schedule(0); // defer
+                    }
+                }
+            }
+        }
+        var names = ['Left_Arrow', 'Right_Arrow', 'Session_Mode_Button', 'Note_Mode_Button'];
+        for(var k in names) {
+            this[names[k]] = null;
+        }
+        var ctl = null;
+        var controls = push.api.get('controls');
+        for(var i=0; i < controls.length; i++) {
+            var x = controls[i];
+            if(x != 'id') {
+                if(ctl == null) {
+                    ctl = new LiveAPI(onControl);
+                }
+                ctl.id = x;
+                var name = ctl.get('name');
+                for(var k in names) {
+                    if(names[k] == name) {
+                        ctl.property = 'value'
+                        this[name] = ctl;
+                        ctl = null;
+                    }
+                }
+            }
+        }
+        this.repaintAll();
     },
     onPushDisconnected: function() {
         log('*** Push disconnected');
     },
     onButtonEvent: function(velocity, x, y) {
         log('onButtonEvent: ', velocity, x, y);
+    },
+
+    repaintAll: function() {
+        log('repaintAll');
+        push.clearAllButtons();
+        for(var i in this.loopers) {
+            var looper = this.loopers[i];
+            var state = looper.state.get('value');
+            this._paintLooperPart(i, 'State', state);
+            var reverse = looper.reverse.get('value');
+            this._paintLooperPart(i, 'Reverse', reverse);
+        }
     }
-});
+    
+};
+var push = new Push(app);
 
 
