@@ -1,11 +1,14 @@
 /*
  TODO
- - listen for session button, then session-x-offset
- - set up looper tracks in grid
+ - grid buttons -> looper midi (can we control state directly this time or output midi again?)
 
  FORUMS
  - call js function on [freebang]? Max freezes up...
 */
+
+autowatch = 1;
+inlets = 1;
+outlets = 1;
 
 
 function log() {
@@ -106,7 +109,7 @@ function Push(options) {
                     var gridId = this.api.call('get_control_by_name', 'Button_Matrix');
                     this.grid = new LiveAPI(function(x, y, z) {
                         if(x[0] == 'value' && x[1] != 'bang' && options.onButtonEvent) {
-                            options.onButtonEvent.call(this, x[1], x[2], x[3]);
+                            options.onButtonEvent(x[2], x[3], x[1]);
                         }
                     });
                     this.grid.id = gridId[1];
@@ -206,7 +209,6 @@ function Push(options) {
 }
 
 
-
 function FindDevices(options) {
 
     function doTrack(api, path) {
@@ -295,18 +297,7 @@ doPoll.local = true;
 log("___________________________________________________");
 //log("Reload:", new Date);
 
-autowatch = 1;
-inlets = 1;
-outlets = 1;
 
-
-
-
-function blankPush() {
-//    push.releaseGrid();
-    push.setImage(BLANK_IMAGE);
-}
-blankPush.local = 1;
 
 
 var DEV_NAME = 'Push';
@@ -315,8 +306,7 @@ var app = {
     // part this out to also call from repaintAll
     _paintLooperPart: function(track_index, name, value) {
         var iTrack = track_index - app.track_offset;
-        log('_paintLooperPart', track_index, name, value, iTrack);
-        if(iTrack >= 0) { // ignore off-screen
+        if(iTrack >= 0 && iTrack <= 7) { // ignore off-screen
             if(name == 'State') {
                 if(value == 0) { // stop
                     push.setButton(iTrack, 0, this.bBufferFilled ? 123 : 0)
@@ -327,11 +317,13 @@ var app = {
                     push.setButton(iTrack, 1, 5)
                     push.setButton(iTrack, 2, 7)
                 } else if(value == 2) { // play
-                    log('here');
                     push.setButton(iTrack, 0, 21)
                     push.setButton(iTrack, 1, 5)
                     push.setButton(iTrack, 2, 7)
                 } else if(value == 3) { // dub
+                    push.setButton(iTrack, 0, 85)
+                    push.setButton(iTrack, 1, 5)
+                    push.setButton(iTrack, 2, 7)
                 }
             } else if(name == 'Reverse') {
                 push.setButton(iTrack, 3, value ? 45 : 43); // 43 is light blue;
@@ -411,8 +403,10 @@ var app = {
 		    log('*** Push found');
         push.grabGrid();
         push.setImage(PK_IMAGE);
-        var blankTask = new Task(blankPush);
-        blankTask.schedule(1000);
+        var repaintTask = new Task(function() {
+            app.repaintAll();
+        });
+        repaintTask.schedule(1000);
     },
     onPushConnected: function() {
 		    log('*** Push connected');
@@ -440,7 +434,7 @@ var app = {
                 } else if(name == 'Session_Mode_Button' || name == 'Note_Mode_Button') {
                     // created upon entering session mode
                     if(app.session_component == null) {
-                        pollSessionTask.schedule(0); // defer
+                        pollSessionTask.schedule(0); // defer ctor
                     }
                 }
             }
@@ -468,17 +462,24 @@ var app = {
                 }
             }
         }
-        this.repaintAll();
     },
     onPushDisconnected: function() {
         log('*** Push disconnected');
     },
-    onButtonEvent: function(velocity, x, y) {
-        log('onButtonEvent: ', velocity, x, y);
-    },
+    onButtonEvent: function(x, y, velocity) {
+        log('onButtonEvent: ', x, y, velocity);
+        var iTrack = x - this.track_offset;
+        var looper = this.loopers['' + iTrack];
+        if(looper) {
+            if(y == 0) { // transport
+                var state = looper.looper.get('State');
+                looper.looper.set('State', state);
 
+                // send midi 
+            }
+        }
+    },
     repaintAll: function() {
-        log('repaintAll');
         push.clearAllButtons();
         for(var i in this.loopers) {
             var looper = this.loopers[i];
