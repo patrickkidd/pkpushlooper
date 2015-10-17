@@ -1,10 +1,11 @@
 /*
- TODO - critical
+ CRITICAL
  - Fix LiveAPI errors on reloading live set
+ - Finish UI
  - options:
    - Sustain pedal mode
 
- TODO - low-pri
+ WISH LIST
  - Arm on push
  - allow playing piano while looping with bass
  - output visual pulse on loop restart?
@@ -290,8 +291,8 @@ function LooperManager() {
     // 16-23 => clear
     // 24-31 => reverse
     // 32    => clear all
-    this.onMidi = function(note, vel) {
-//        log('onMidi', note, vel, this.firstLooperFinishedRecording);
+    this.onMidiNote = function(note, vel) {
+//        log('onMidiNote', note, vel, this.firstLooperFinishedRecording);
         var iTrack = note % 8;
         var looper = this.loopers[iTrack];
         var row = toInt(note / 8);
@@ -441,8 +442,12 @@ function push_track_offset(x) {
 // push grid just as is sent from the pedalboard. Also that way we can
 // do things in sync with looper states, like queue and start other
 // loopers.
-function midi(note, vel) {
-    manager.onMidi(note, vel);
+function midi_note(note, vel) {
+    manager.onMidiNote(note, vel);
+}
+
+function midi_cc(num, val) {
+    manager.onMidiCC(num, val);
 }
 
 
