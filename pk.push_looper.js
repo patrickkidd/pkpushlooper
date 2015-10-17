@@ -1,16 +1,11 @@
 /*
  TODO - critical
- - MIDI input -> looper ctl
+ - Fix LiveAPI errors on reloading live set
  - options:
-   - Arm track via MIDI
-   - Arm on record (mutually exclusive with Arm track via MIDI?)
-   - Arm on push
-   - Stop transport on clear all
-   - Ingore track (i.e. vocals)
    - Sustain pedal mode
-   - clear all button
 
  TODO - low-pri
+ - Arm on push
  - allow playing piano while looping with bass
  - output visual pulse on loop restart?
  - Push UI doesn't update when looper State changes on it's own.
@@ -26,7 +21,7 @@ PKPushState = new Global('PKPushState');
 
 // constants
 STOP_TRANSPORT_ON_CLEAR = true;
-
+ARM_TRACK_ON_RECORD = true;
 
 function toInt(f) {
     return f | 0;
@@ -132,12 +127,21 @@ function LooperManager() {
         }
 
         this.liveSet = LiveAPI('live_set');
+        this.liveSetView = LiveAPI('live_set view');
+
+        this.track_devices = {};
+        var iTracks = this.liveSet.getcount('tracks');
+        for(var i=0; i < iTracks; i++) {
+            var device = new LiveAPI('live_set tracks ' + i);
+            this.track_devices[i] = device;
+        }
 
         this.track_offset = 0;
 
         var foundLoopers = FindDevices({ type: 'Looper' });
         this.loopers = {};
         this.levels = {};
+        this.ignore_track = null;
 
         // queue state
         this.firstLooperStart = null;
@@ -148,6 +152,7 @@ function LooperManager() {
             // observe loopers
             var looper = {
                 device: new LiveAPI('id ' + foundLoopers[track]),
+                track_device: new LiveAPI('live_set tracks ' + track),
                 bBufferFilled: false,
                 track_index: track,
                 queuedVelocity: null // set when awaiting another looper
@@ -252,7 +257,7 @@ function LooperManager() {
     };
 
     this.repaintAll = function() {
-        log('repaintAll');
+//        log('repaintAll');
         outlet(1, 'clear');
         for(var i in this.loopers) {
             var looper = this.loopers[i];
@@ -271,7 +276,8 @@ function LooperManager() {
         for(var i in this.loopers) {
             i = parseInt(i);
             var looper = this.loopers[i];
-            send_note(i + 16);
+            send_note(i + 8); // stop
+            send_note(i + 16); // clear
         }
         if(STOP_TRANSPORT_ON_CLEAR) {
             this.liveSet.call('stop_playing');
@@ -299,6 +305,9 @@ function LooperManager() {
                         this.firstLooperStart = iTrack;
                         this.firstLooperFinishedRecording = false;
                         outlet(0, [144, note, vel]);
+                        if(ARM_TRACK_ON_RECORD) {
+                            this.armTrack(iTrack);
+                        }
                         // the respective first note-off gets passed through below
                     }
                 } else if(this.firstLooperFinishedRecording == false) {
@@ -322,6 +331,9 @@ function LooperManager() {
                                     DEBUG('*** STARTING:', i, looper.queuedVelocity);
                                     send_note(i, looper.queuedVelocity);
                                     looper.queuedVelocity = null;
+                                    if(ARM_TRACK_ON_RECORD) {
+                                        this.armTrack(i);
+                                    }
                                 }
                             }
                         }
@@ -338,7 +350,9 @@ function LooperManager() {
 
                 } else {
                     // pass-through
-                    log('pass-through', note, vel);
+                    if(vel > 0 && ARM_TRACK_ON_RECORD) {
+                        this.armTrack(iTrack);
+                    }
 				            outlet(0, [144, note, vel]);
                 }
             } else if(row == 1) { // stop
@@ -350,9 +364,35 @@ function LooperManager() {
             } else if(row == 3) { // reverse
 				        outlet(0, [144, note, vel]);
             }
+        } else if(!looper) {
+            // extant track but no looper
+            if(ARM_TRACK_ON_RECORD) {
+                this.armTrack(iTrack);
+            }
         }
     };
 
+    this.armTrack = function(iTrack, exclusive) {
+        if(iTrack == this.ignore_track) { // i.e. vocals
+            return;
+        }
+        if(exclusive == undefined) {
+            exclusive = true;
+        }
+        for(var i in this.track_devices) {
+            var dev = this.track_devices[i];
+            i = parseInt(i);
+            if(i != iTrack && exclusive) {
+                dev.set('arm', 0);
+            } else {
+                dev.set('arm', 1);
+            }
+        }
+    };
+
+    this.setIgnoreTrack = function(iTrack) {
+        this.ignore_track = parseInt(iTrack);
+    }
 
 };
 
@@ -405,6 +445,19 @@ function midi(note, vel) {
     manager.onMidi(note, vel);
 }
 
+
+function clear_all() {
+    manager.clearAll();
+}
+
+function set_arm_track_on_record(x) {
+    ARM_TRACK_ON_RECORD = x && true;
+    log("ARM_ON_RECORD", ARM_TRACK_ON_RECORD);
+}
+
+function set_ignore_track(x) {
+    manager.setIgnoreTrack(x);
+}
 
 
 function push_button(x, y, velocity) {
