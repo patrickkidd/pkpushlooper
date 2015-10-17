@@ -1,15 +1,36 @@
 /*
- TODO
- - grid buttons -> looper midi (can we control state directly this time or output midi again?)
+ TODO - critical
+ - MIDI input -> looper ctl
+ - options:
+   - Arm track via MIDI
+   - Arm on record (mutually exclusive with Arm track via MIDI?)
+   - Arm on push
+   - Stop transport on clear all
+   - Ingore track (i.e. vocals)
+   - Sustain pedal mode
+   - clear all button
+
+ TODO - low-pri
+ - allow playing piano while looping with bass
+ - output visual pulse on loop restart?
+ - Push UI doesn't update when looper State changes on it's own.
 
  FORUMS
  - call js function on [freebang]? Max freezes up...
 */
 
 autowatch = 1;
-inlets = 1;
-outlets = 1;
+inlets = 2;
+outlets = 2;
+PKPushState = new Global('PKPushState');
 
+// constants
+STOP_TRANSPORT_ON_CLEAR = true;
+
+
+function toInt(f) {
+    return f | 0;
+}
 
 function log() {
   for(var i=0,len=arguments.length; i<len; i++) {
@@ -31,184 +52,12 @@ function log() {
   post("\n");
 }
 
-
-
-var PK_IMAGE = [
-    [5, 5, 5, 0, 5, 0, 0, 5],
-    [5, 0, 0, 5, 5, 0, 5, 0],
-    [5, 0, 0, 5, 5, 5, 5, 0],
-    [5, 5, 5, 0, 5, 5, 0, 0],
-    [5, 0, 0, 0, 5, 5, 0, 0],
-    [5, 0, 0, 0, 5, 0, 5, 0],
-    [5, 0, 0, 0, 5, 0, 0, 5],
-    [5, 0, 0, 0, 5, 0, 0, 5],
-];
-
-
-var BLANK_IMAGE = [
-    [0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0],
-];
-
-function Push(options) {
-
-    options = typeof options !== 'undefined' ? options : {};
-
-    this.init = function() {
-        this.bLiveAPIInit = false;
-        this.bPushFound = false;
-        this.api = null;
-        this.grid = null;
-        this.gridGrabbed = false;
-        this.gridData = [
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-        ];
-        this.dead = false;
-        
-        // just check a little time after the live api might be initialized
-        // in case we are in js dev mode and no [live.thisdevice] bang is coming.
-        // if a [live.thisdevice] bang already came then running it again won't hurt.
-        this.pollCheck = new Task(doPoll);
-        this.pollCheck.schedule(500);
-        
-        // the regular polling task
-        this.pollRepeat = new Task(doPoll);
-        this.pollRepeat.interval = 1000;
-    }
-
-    // keep the live object updated
-    this.poll = function() {
-        if(this.bLiveAPIInit == false) {
-            this.bLiveAPIInit = true;
-            if(options.onLiveAPIInit) {
-                options.onLiveAPIInit();
-            }
-        }
-        var exists = false;
-	      for(var i=0; i < 6; i++) {
-		        var api = new LiveAPI("control_surfaces " + i);
-            if(api.type == DEV_NAME) {
-                var thisId = this.api != null ? this.api.id : null;
-                if(this.api && this.api.id == api.id) {
-                    exists = true;
-                } else if(!this.api || this.api.id != api.id) {
-                    this.api = api;
-                    var gridId = this.api.call('get_control_by_name', 'Button_Matrix');
-                    this.grid = new LiveAPI(function(x, y, z) {
-                        if(x[0] == 'value' && x[1] != 'bang' && options.onButtonEvent) {
-                            options.onButtonEvent(x[2], x[3], x[1]);
-                        }
-                    });
-                    this.grid.id = gridId[1];
-                    this.grid.property = 'value';
-                    exists = true;
-                    if(this.bPushFound == false) {
-                        this.bPushFound = true;
-                        if(options.onPushFound) {
-                            options.onPushFound();
-                        }
-                    }
-                    if(options.onPushConnected) {
-                        options.onPushConnected();
-                    }
-                }
-            }
-	      }
-        if(!exists && this.api) {
-            this.api = null;
-            this.grid = null;
-            if(options.onPushDisconnected) {
-                options.onPushDisconnected();
-            }
-        }
-    }
-
-    this.destroy = function() {
-        this.releaseGrid();
-        this.dead = true;
-    };
-
-    this.setButton = function(x, y, z) {
-        if(x < 0 || x > 7 || y < 0 || y > 7 || z < 0 || z > 255) {
-            log('Push.setButton() invalid arguments: ' + x + ', ' + y + ', ' + z);
-        }
-        if(this.gridGrabbed && this.grid) {
-            this.grid.call('send_value', x, y, z);
-        }
-        this.gridData[y][x] = z;
-    }
-
-    this.setAllButtons = function(x) {
-        for(var i=0; i < 8; i++) {
-            for(var j=0; j < 8; j++) {
-                this.setButton(i, j, x);
-            }
-        }
-    }
-
-    this.clearAllButtons = function() {
-        for(var i=0; i < 8; i++) {
-            for(var j=0; j < 8; j++) {
-                this.setButton(i, j, 0);
-            }
-        }
-    }
-
-    this.grabGrid = function() {
-        if(this.api) {
-            this.api.call('grab_control', 'id', this.grid.id);
-            this.gridGrabbed = true;
-        }
-    }
-
-    this.releaseGrid = function() {
-        if(this.api) {
-            this.api.call('release_control', 'id', this.grid.id);
-            this.gridGrabbed = false;
-        }
-    }
-
-    this.recallData = function() {
-        for(var i=0; i < this.gridData.length; i++) {
-            var row = this.gridData[i];
-            for(var j=0; j < row.length; j++) {
-                var x = row[j];
-                this.setButton(j, i, x);
-            }
-        }
-    }
-
-    this.setImage = function(data) {
-        for(var i=0; i < data.length; i++) {
-            var row = data[i];
-            for(var j=0; j < row.length; j++) {
-                var x = row[j];
-                this.setButton(j, i, x);
-            }
-        }
-    }
-
-    this.setPK = function() {
-        this.setImage(PK_IMAGE);
-    }
-
-    this.init();
+function DEBUG() {
 }
+DEBUG = log;
 
 
+// Find all matching devices in the live set
 function FindDevices(options) {
 
     function doTrack(api, path) {
@@ -255,139 +104,71 @@ function FindDevices(options) {
 
 
 
-// public api
 
-function poll() {
-    push.pollCheck.schedule(1);
-}
+function LooperManager() {
 
-
-function release() {
-    push.releaseGrid();
-}
-
-function grab() {
-    push.grabGrid();
-    push.recallData();
-}
-
-function clear() {
-    push.clearAllButtons();
-}
-
-function set_pk() {
-    push.setPK();
-}
-
-function midi(note, vel) {
-    log('midi: ', note, vel);
-}
-
-var bPolling = false;
-function doPoll() {
-    push.poll();
-    if(bPolling == false) {
-        push.pollRepeat.repeat();
-        bPolling = true;
+    function onLooperChange(x) {
+        if(manager.bInit && x[0] == 'value' && this.track_index !== undefined) {
+//            log('onLooperChange()', x, this.track_index);
+            if(this.get('name') == 'State' && x[1] != 0) {
+                manager.loopers[this.track_index].bBufferFilled = true;
+            }
+            manager.paintLooperPart(this.track_index, this.get('name'), x[1]);
+        }
     }
-}
-doPoll.local = true;
 
-
-log("___________________________________________________");
-//log("Reload:", new Date);
-
-
-
-
-var DEV_NAME = 'Push';
-var app = {
-
-    // part this out to also call from repaintAll
-    _paintLooperPart: function(track_index, name, value) {
-        var iTrack = track_index - app.track_offset;
-        if(iTrack >= 0 && iTrack <= 7) { // ignore off-screen
-            if(name == 'State') {
-                if(value == 0) { // stop
-                    push.setButton(iTrack, 0, this.bBufferFilled ? 123 : 0)
-                    push.setButton(iTrack, 1, this.bBufferFilled ? 7 : 0)
-                    push.setButton(iTrack, 2, this.bBufferFilled ? 7 : 0)
-                } else if(value == 1) { // rec
-                    push.setButton(iTrack, 0, 5)
-                    push.setButton(iTrack, 1, 5)
-                    push.setButton(iTrack, 2, 7)
-                } else if(value == 2) { // play
-                    push.setButton(iTrack, 0, 21)
-                    push.setButton(iTrack, 1, 5)
-                    push.setButton(iTrack, 2, 7)
-                } else if(value == 3) { // dub
-                    push.setButton(iTrack, 0, 85)
-                    push.setButton(iTrack, 1, 5)
-                    push.setButton(iTrack, 2, 7)
-                }
-            } else if(name == 'Reverse') {
-                push.setButton(iTrack, 3, value ? 45 : 43); // 43 is light blue;
-            }
+    function onLevelMeter(x) {
+//        log('onLevelMeter()', x, this.track_index);
+        if(this.track_index !== undefined) {
+            manager.paintLevelMeter(this, x);
         }
-    },
+    }
 
-    onLiveAPIInit: function() {
-        function onLooperChange(x) {
-            if(x[0] == 'value' && this.track_index !== undefined) {
-                app._paintLooperPart(this.track_index, this.get('name'), x[1]);
-            }
+    this.bInit = false;
+    this.init = function() {
+
+        if(this.bInit) {
+            return;
         }
-        function onLevelMeter(x, y, z) {
-            if(x[0] == 'output_meter_left' && x[1] != 'bang') {
-                var level = x[1];
-                var color = 0;
-                var nCells = 0;
-                if(level == 0) {
-                    color = 0;
-                    nCells = 0;
-                }
-                else if(level <= 0.3) {
-                    color = 86;
-                    nCells = 1;
-                } else if (level <= 0.5) {
-                    color = 13;
-                    nCells = 2;
-                } else if (level <= 0.9) {
-                    color = 84;
-                    nCells = 3;
-                } else {
-                    color = 5; // peak
-                    nCells = 4;
-                }
-                for(var row=7; row >= 4; row--) {
-                    var isLit = row > (7 - nCells);
-                    push.setButton(this.track_index + app.track_offset, row, isLit ? color : 0);
-                }
-            }
-        }
+
+        this.liveSet = LiveAPI('live_set');
+
+        this.track_offset = 0;
+
         var foundLoopers = FindDevices({ type: 'Looper' });
         this.loopers = {};
         this.levels = {};
+
+        // queue state
+        this.firstLooperStart = null;
+        this.firstLooperFinishedRecording = null;
+
         for(var track in foundLoopers) {
+            track = parseInt(track);
             // observe loopers
-            var looper = {};
-            looper.looper = new LiveAPI('id ' + foundLoopers[track]);
-            looper.bBufferFilled = false;
-            var param = new LiveAPI(onLooperChange);
-            var params = looper.looper.get('parameters');
-            for(var i=0; i < params.length ; i++) {
-                if(params[i] != 'id') {
-                    param.id = params[i];
+            var looper = {
+                device: new LiveAPI('id ' + foundLoopers[track]),
+                bBufferFilled: false,
+                track_index: track,
+                queuedVelocity: null // set when awaiting another looper
+            };
+            var parameters = looper.device.get('parameters');
+            for(var i=0; i < parameters.length ; i++) {
+                if(parameters[i] != 'id') {
+                    var param = new LiveAPI(onLooperChange);
+                    param.id = parameters[i];
                     if(param.get('name') == 'State') {
+                        param.track_index = track;
+                        param.looper = looper;
                         looper.state = param;
                         looper.state.property = 'value';
                         looper.state.track_index = track;
-                        param = new LiveAPI(onLooperChange);
                     } else if(param.get('name') == 'Reverse') {
+                        param.track_index = track;
+                        param.looper = looper;
                         looper.reverse = param;
                         looper.reverse.property = 'value';
                         looper.reverse.track_index = track;
-                        param = new LiveAPI(onLooperChange);
                     }
                 }
             }
@@ -398,99 +179,264 @@ var app = {
             observer.track_index = track;
             this.levels[track] = observer;
         }
-    },
-    onPushFound: function() {
-		    log('*** Push found');
-        push.grabGrid();
-        push.setImage(PK_IMAGE);
-        var repaintTask = new Task(function() {
-            app.repaintAll();
-        });
-        repaintTask.schedule(1000);
-    },
-    onPushConnected: function() {
-		    log('*** Push connected');
-        this.session_component = null;
-        this.track_offset = 0;
-        var pollSessionTask = new Task(function() {
-            var x = push.api.call('highlighting_session_component');
-            if(x[0] == 'id' && x[1] != 0) {
-                app.session_component = new LiveAPI('id ' + x[1]);
-            }
-        });
-        pollSessionTask.schedule(0);
-        function onControl(x) {
-            if(x[0] == 'value' && x[1] != 'bang' && x[1] > 0) {
-                var value = x[1];
-                var name = this.get('name');
-                if(name == 'Left_Arrow' || name == 'Right_Arrow') {
-                    if(app.session_component) {
-                        var track_offset = app.session_component.call('track_offset');
-                        if(track_offset != app.track_offset) {
-                            app.track_offset = track_offset;
-                            app.repaintAll();
-                        }
-                    }
-                } else if(name == 'Session_Mode_Button' || name == 'Note_Mode_Button') {
-                    // created upon entering session mode
-                    if(app.session_component == null) {
-                        pollSessionTask.schedule(0); // defer ctor
-                    }
-                }
-            }
-        }
-        var names = ['Left_Arrow', 'Right_Arrow', 'Session_Mode_Button', 'Note_Mode_Button'];
-        for(var k in names) {
-            this[names[k]] = null;
-        }
-        var ctl = null;
-        var controls = push.api.get('controls');
-        for(var i=0; i < controls.length; i++) {
-            var x = controls[i];
-            if(x != 'id') {
-                if(ctl == null) {
-                    ctl = new LiveAPI(onControl);
-                }
-                ctl.id = x;
-                var name = ctl.get('name');
-                for(var k in names) {
-                    if(names[k] == name) {
-                        ctl.property = 'value'
-                        this[name] = ctl;
-                        ctl = null;
-                    }
-                }
-            }
-        }
-    },
-    onPushDisconnected: function() {
-        log('*** Push disconnected');
-    },
-    onButtonEvent: function(x, y, velocity) {
-        log('onButtonEvent: ', x, y, velocity);
-        var iTrack = x - this.track_offset;
-        var looper = this.loopers['' + iTrack];
-        if(looper) {
-            if(y == 0) { // transport
-                var state = looper.looper.get('State');
-                looper.looper.set('State', state);
+        repaintTask.schedule(1);
+        this.bInit = true;
+    };
 
-                // send midi 
+    this.setButtonColor = function(x, y, c) {
+//        log('Manager.setButtonColor', x, y, c);
+        outlet(1, ['set', x, y, c]);
+    };
+
+    this.setTrackOffset = function(x) {
+        this.track_offset = x;
+        this.repaintAll();
+    };
+
+    this.paintLooperPart = function(track_index, name, value) {
+//        log('Manager.paintLooperPart', track_index, name, value);
+        var iTrack = track_index - this.track_offset;
+        if(iTrack >= 0 && iTrack <= 7) { // ignore off-screen
+            var bBufferFilled = this.loopers[iTrack].bBufferFilled;
+            if(name == 'State') {
+                if(value == 0) { // stop
+                    this.setButtonColor(iTrack, 0, bBufferFilled ? 123 : 0)
+                    this.setButtonColor(iTrack, 1, bBufferFilled ? 7 : 0)
+                    this.setButtonColor(iTrack, 2, bBufferFilled ? 7 : 0)
+                } else if(value == 1) { // rec
+                    this.setButtonColor(iTrack, 0, 5)
+                    this.setButtonColor(iTrack, 1, 5)
+                    this.setButtonColor(iTrack, 2, 7)
+                } else if(value == 2) { // play
+                    this.setButtonColor(iTrack, 0, 21)
+                    this.setButtonColor(iTrack, 1, 5)
+                    this.setButtonColor(iTrack, 2, 7)
+                } else if(value == 3) { // dub
+                    this.setButtonColor(iTrack, 0, 85)
+                    this.setButtonColor(iTrack, 1, 5)
+                    this.setButtonColor(iTrack, 2, 7)
+                }
+            } else if(name == 'Reverse') {
+                this.setButtonColor(iTrack, 3, parseInt(value) ? 45 : 43); // 43 is light blue;
             }
         }
-    },
-    repaintAll: function() {
-        push.clearAllButtons();
+    };
+
+    this.paintLevelMeter = function(param, x) {
+        if(x[0] == 'output_meter_left' && x[1] != 'bang') {
+            var level = x[1];
+            var color = 0;
+            var nCells = 0;
+            if(level == 0) {
+                color = 0;
+                nCells = 0;
+            }
+            else if(level <= 0.3) {
+                color = 86;
+                nCells = 1;
+            } else if (level <= 0.5) {
+                color = 13;
+                nCells = 2;
+            } else if (level <= 0.9) {
+                color = 84;
+                nCells = 3;
+            } else {
+                color = 5; // peak
+                nCells = 4;
+            }
+            for(var row=7; row >= 4; row--) {
+                var isLit = row > (7 - nCells);
+                this.setButtonColor(param.track_index + this.track_offset, row, isLit ? color : 0);
+            }
+        }
+    };
+
+    this.repaintAll = function() {
+        log('repaintAll');
+        outlet(1, 'clear');
         for(var i in this.loopers) {
             var looper = this.loopers[i];
             var state = looper.state.get('value');
-            this._paintLooperPart(i, 'State', state);
+            this.paintLooperPart(i, 'State', state);
             var reverse = looper.reverse.get('value');
-            this._paintLooperPart(i, 'Reverse', reverse);
+            this.paintLooperPart(i, 'Reverse', reverse);
         }
-    }
-    
+    };
+
+    // clear all loopers, reset looper states and message queues
+    this.clearAll = function() {
+        DEBUG('LooperManager.clearAll()');
+        this.firstLooperStart = null;
+        this.firstLooperFinishedRecording = null;
+        for(var i in this.loopers) {
+            i = parseInt(i);
+            var looper = this.loopers[i];
+            send_note(i + 16);
+        }
+        if(STOP_TRANSPORT_ON_CLEAR) {
+            this.liveSet.call('stop_playing');
+        }
+        this.repaintAll();
+    };
+
+    // 00-07 => transport
+    // 08-15 => stop
+    // 16-23 => clear
+    // 24-31 => reverse
+    // 32    => clear all
+    this.onMidi = function(note, vel) {
+//        log('onMidi', note, vel, this.firstLooperFinishedRecording);
+        var iTrack = note % 8;
+        var looper = this.loopers[iTrack];
+        var row = toInt(note / 8);
+        if(note == 32 && vel > 0) { // clear all
+            this.clearAll();
+        } else if(looper) {
+            if(row == 0) { // transport
+                if(this.firstLooperStart == null) {
+                    if(vel > 0) {
+                        DEBUG('*** FIRST RECORD: ' + vel);
+                        this.firstLooperStart = iTrack;
+                        this.firstLooperFinishedRecording = false;
+                        outlet(0, [144, note, vel]);
+                        // the respective first note-off gets passed through below
+                    }
+                } else if(this.firstLooperFinishedRecording == false) {
+                    
+                    // ^^ now in the time window of recording the first looper ^^
+                    
+                    if(this.firstLooperStart == iTrack) { // finish rec.
+                        if(vel > 0) {
+                            DEBUG('*** FIRST FINISHED: ' + vel);
+                            this.firstLooperFinishedRecording = true;
+                            // First looper is going to finish its
+                            // initial recording.  So trigger all
+                            // queued loopers just *before* the first
+                            // one gets its note out. This is
+                            // (clearly) only run from the first
+                            // looper.
+                            for(var i in this.loopers) {
+                                i = parseInt(i);
+                                var looper = this.loopers[i];
+                                if(i != iTrack && looper.queuedVelocity != null) {
+                                    DEBUG('*** STARTING:', i, looper.queuedVelocity);
+                                    send_note(i, looper.queuedVelocity);
+                                    looper.queuedVelocity = null;
+                                }
+                            }
+                        }
+                        outlet(0, [144, note, vel]);
+                    } else if(this.firstLooperStart != iTrack && vel > 0) {
+                        // second looper queueing it's start
+                        DEBUG('*** QUEUING: ', iTrack, ', ', vel);
+                        var looper = this.loopers[iTrack];
+                        looper.queuedVelocity = vel;
+                        // TODO: flash transport button on push grid
+                    }
+
+                    // ignore note-off here
+
+                } else {
+                    // pass-through
+                    log('pass-through', note, vel);
+				            outlet(0, [144, note, vel]);
+                }
+            } else if(row == 1) { // stop
+				        outlet(0, [144, note, vel]);
+            } else if(row == 2) { // clear
+                looper.bBufferFilled = false;
+				        outlet(0, [144, note, vel]);
+                this.paintLooperPart(iTrack, 'State', 0); // no idea
+            } else if(row == 3) { // reverse
+				        outlet(0, [144, note, vel]);
+            }
+        }
+    };
+
+
 };
-var push = new Push(app);
 
 
+log("__________________________  pk.push_looper.js: ____________________________");
+
+var manager = new LooperManager();
+
+
+function push_api_init() {
+    log('pk.push_looper.push_api_init()');
+    PKPushState.bAPIInit = true;
+    manager.init();
+}
+
+/*
+var repaintRepeatTask = new Task(function() {
+    manager.repaintAll();
+    post('repaintRepeatTask');
+});
+repaintRepeatTask.interval = 2000;
+repaintRepeatTask.repeat();
+*/
+
+var repaintTask = new Task(function() {
+    manager.repaintAll();
+});
+function push_found() {
+    log('pk.push_looper.push_found()');
+    repaintTask.schedule(1);
+}
+
+function push_connected() {
+}
+
+function push_disconnected() {
+}
+
+function push_track_offset(x) {
+    log('pk.push_track_offset()', x);
+    manager.setTrackOffset(x);
+}
+
+// midi input
+// This device acts as a midi filter so that we can send midi from the
+// push grid just as is sent from the pedalboard. Also that way we can
+// do things in sync with looper states, like queue and start other
+// loopers.
+function midi(note, vel) {
+    manager.onMidi(note, vel);
+}
+
+
+
+function push_button(x, y, velocity) {
+    log('pk.push_looper.push_button()', x, y, velocity);
+    var iTrack = x - manager.track_offset;
+    var looper = manager.loopers[iTrack];
+    if(looper) {
+        // send midi: 144 : note, 176 : cc
+        if(y == 0) { // transport
+            manager.onMidi(iTrack, velocity);
+        } else if(y == 1) { // stop
+            manager.onMidi(iTrack + 8, velocity);
+        } else if(y == 2) { // clear
+            manager.onMidi(iTrack + 16, velocity);
+        } else if(y == 3) { // reverse
+            manager.onMidi(iTrack + 24, velocity);
+			  }
+    }
+}
+
+function send_note(note, vel) {
+    if(vel == undefined) {
+        vel = 100;
+    }
+    outlet(0, [144, note, vel]);
+    outlet(0, [144, note, 0]);
+}
+
+// dev
+if(PKPushState.bAPIInit) {
+    push_api_init();
+}
+if(PKPushState.bPushFound) {
+    push_found();
+}
