@@ -1,6 +1,5 @@
 /*
  CRITICAL
- - Fix LiveAPI errors on reloading live set
  - Finish UI
  - options:
    - Sustain pedal mode
@@ -50,7 +49,7 @@ function log() {
 
 function DEBUG() {
 }
-DEBUG = log;
+//DEBUG = log;
 
 
 // Find all matching devices in the live set
@@ -120,12 +119,27 @@ function LooperManager() {
         }
     }
 
+
+    // just check a little time after the live api might be initialized
+    // in case we are in js dev mode and no [live.thisdevice] bang is coming.
+    // if a [live.thisdevice] bang already came then running it again won't hurt.
+    this.initDefered = function() {
+        this.initTask = new Task(function() {
+            manager.init();
+        });
+        this.initTask.schedule(500);
+    };
+    this.initDefered();
+
     this.bInit = false;
     this.init = function() {
 
         if(this.bInit) {
+            this.repaintAll();
             return;
         }
+
+        log('LooperManager.init');
 
         this.liveSet = LiveAPI('live_set');
         this.liveSetView = LiveAPI('live_set view');
@@ -185,7 +199,7 @@ function LooperManager() {
             observer.track_index = track;
             this.levels[track] = observer;
         }
-        repaintTask.schedule(1);
+        this.repaintAll();
         this.bInit = true;
     };
 
@@ -258,7 +272,6 @@ function LooperManager() {
     };
 
     this.repaintAll = function() {
-//        log('repaintAll');
         outlet(1, 'clear');
         for(var i in this.loopers) {
             var looper = this.loopers[i];
@@ -373,6 +386,12 @@ function LooperManager() {
         }
     };
 
+    this.onMidiCC = function(num, value) {
+        if(num == 63) { // sustain
+        }
+    };
+
+
     this.armTrack = function(iTrack, exclusive) {
         if(iTrack == this.ignore_track) { // i.e. vocals
             return;
@@ -393,7 +412,7 @@ function LooperManager() {
 
     this.setIgnoreTrack = function(iTrack) {
         this.ignore_track = parseInt(iTrack);
-    }
+    };
 
 };
 
@@ -405,25 +424,13 @@ var manager = new LooperManager();
 
 function push_api_init() {
     log('pk.push_looper.push_api_init()');
-    PKPushState.bAPIInit = true;
     manager.init();
 }
 
-/*
-var repaintRepeatTask = new Task(function() {
-    manager.repaintAll();
-    post('repaintRepeatTask');
-});
-repaintRepeatTask.interval = 2000;
-repaintRepeatTask.repeat();
-*/
-
-var repaintTask = new Task(function() {
-    manager.repaintAll();
-});
 function push_found() {
     log('pk.push_looper.push_found()');
-    repaintTask.schedule(1);
+    // update the push
+    manager.repaintAll();
 }
 
 function push_connected() {
@@ -457,7 +464,6 @@ function clear_all() {
 
 function set_arm_track_on_record(x) {
     ARM_TRACK_ON_RECORD = x && true;
-    log("ARM_ON_RECORD", ARM_TRACK_ON_RECORD);
 }
 
 function set_ignore_track(x) {
@@ -472,13 +478,13 @@ function push_button(x, y, velocity) {
     if(looper) {
         // send midi: 144 : note, 176 : cc
         if(y == 0) { // transport
-            manager.onMidi(iTrack, velocity);
+            manager.onMidiNote(iTrack, velocity);
         } else if(y == 1) { // stop
-            manager.onMidi(iTrack + 8, velocity);
+            manager.onMidiNote(iTrack + 8, velocity);
         } else if(y == 2) { // clear
-            manager.onMidi(iTrack + 16, velocity);
+            manager.onMidiNote(iTrack + 16, velocity);
         } else if(y == 3) { // reverse
-            manager.onMidi(iTrack + 24, velocity);
+            manager.onMidiNote(iTrack + 24, velocity);
 			  }
     }
 }
@@ -491,10 +497,3 @@ function send_note(note, vel) {
     outlet(0, [144, note, 0]);
 }
 
-// dev
-if(PKPushState.bAPIInit) {
-    push_api_init();
-}
-if(PKPushState.bPushFound) {
-    push_found();
-}

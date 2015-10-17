@@ -38,89 +38,19 @@ PKPushState.bPushFound = false;
 
 function UI() {
 
-    // map the 4 x 4 x 4 x 4 grids into index order
-    // cause its easier to paint them by quadrant
-    var _order = [
-	      0, 1, 2, 3,
-	      8, 9, 10, 11,
-	      16, 17, 18, 19,
-	      24, 25, 26, 27,
-	      
-	      4, 5, 6, 7,
-	      12, 13, 14, 15,
-	      20, 21, 22, 23,
-	      28, 29, 30, 31,
-	      
-	      32, 33, 34, 35,
-	      40, 41, 42, 43,
-	      48, 49, 50, 51,
-	      56, 57, 58, 59,
-	      
-	      36, 37, 38, 39,
-	      44, 45, 46, 47,
-	      52, 53, 54, 55,
-	      60, 61, 62, 63
-    ];
-
-    var BUTTON_SIZE = 50;
-	  var MARGIN = 2;
     this.buttons = [];
-    this.prepends = [];
     var that = this;
 
-    function chunk(x, y) {
-	      for(var i=0; i < 4; i++) {
-		        for(var j=0; j < 4; j++) {
-			          var o = _patcher.newobject("toggle",
-                                          j * BUTTON_SIZE + x,
-                                          i * BUTTON_SIZE + y,
-                                          BUTTON_SIZE,
-                                          BUTTON_SIZE);
-			          o.message('checkedcolor', 0, 0, 0, 0);
-			          o.message('presentation', 1);
-			          that.buttons.push(o);
-			          o.index = _order[that.count];
-			          o.varname = 'pk_' + o.index;
-			          that.count++;
-		        }
-	      }
-    }
-
     this.init = function() {
-	      
-	      // clear all buttons
-	      var o = _patcher.firstobject;
-	      while(o) {
-            //		post(o.maxclass + ',' + (o.varname.indexOf('pk_') == 0) + '\n');
-		        if((o.maxclass == 'toggle' && o.varname.indexOf('pk_') == 0) ||
-		           (o.maxclass == 'prepend' && o.varname.indexOf('pkprepend_') == 0)) {
-			          var was = o;
-			          o = was.nextobject;
-			          _patcher.remove(was);
-		        } else {
-			          o = null;
-		        }
-	      }
-	      this.buttons = [];
-	      
         this.count = 0;
-	      chunk(0, 0);
-	      chunk(BUTTON_SIZE * 4 + MARGIN, 0);
-	      chunk(0, BUTTON_SIZE * 4 + MARGIN);
-	      chunk(BUTTON_SIZE * 4 + MARGIN, BUTTON_SIZE * 4 + MARGIN);
-	      this.buttons.sort(function(a, b) {
-		        return a.index - b.index;
-	      });
-	      
-	      this.prepends = [];
-	      for(var i=0; i < this.buttons.length; i++) {
-		        var o = this.buttons[i];
-		        var prepend = _patcher.newdefault(500, 500, "prepend", i);
-		        _patcher.connect(o, 0, prepend, 0);
-		        _patcher.connect(prepend, 0, _patcher.getnamed('mine'), 0);
-		        prepend.varname = 'pkprepend_' + i;
-		        this.prepends.push(prepend);
-	      }
+	      this.buttons = [];
+        for(var i=0; i < 64; i++) {
+            var b = _patcher.getnamed('b_' + i);
+			      // b.message('checkedcolor', 0, 0, 0, 0);
+            // b.maxclass == 'toggle'
+            // _patcher.firstobject, b.nextobject
+            this.buttons.push(b);
+        }
     };
 
     this.setButton = function(x, y, c) {
@@ -372,6 +302,7 @@ var app = {
     ui: true,
 
     onLiveAPIInit: function() {
+        PKPushState.bAPIInit = true;
         outlet(0, 'push_api_init');
     },
     onPushFound: function() {
