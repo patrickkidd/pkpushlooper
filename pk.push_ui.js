@@ -180,6 +180,7 @@ function Push(options) {
                     this.api = api;
                     var gridId = this.api.call('get_control_by_name', 'Button_Matrix');
                     this.grid = new LiveAPI(function(x, y, z) {
+                        log('Button_Matrix', x, y, z);
                         if(x[0] == 'value' && x[1] != 'bang' && options.onButtonEvent) {
                             options.onButtonEvent(x[2], x[3], x[1]);
                         }
@@ -369,6 +370,7 @@ var app = {
         outlet(0, 'push_disconnected');
     },
     onButtonEvent: function(x, y, velocity) {
+        log('onButtonEvent', x, y, velocity);
 	      outlet(0, ['push_button', x, y, velocity]);
     },
     

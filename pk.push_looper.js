@@ -1,18 +1,3 @@
-/*
- CRITICAL
- - Finish UI
- - options:
-   - Sustain pedal mode
-
- WISH LIST
- - Arm on push
- - allow playing piano while looping with bass
- - output visual pulse on loop restart?
- - Push UI doesn't update when looper State changes on it's own.
-
- FORUMS
- - call js function on [freebang]? Max freezes up...
-*/
 
 autowatch = 1;
 inlets = 2;
@@ -144,11 +129,34 @@ function LooperManager() {
         this.liveSet = LiveAPI('live_set');
         this.liveSetView = LiveAPI('live_set view');
 
+        this.flashingButtons = {};
+        this.flashingTimer = new Task(function() {
+            var nKeys = Object.keys(manager.flashingButtons).length;
+            if(nKeys == 0) {
+                return;
+            }
+//            log('flashingTimer', manager.flashingButtons);
+            for(var i in manager.flashingButtons) {
+                var b = manager.flashingButtons[i];
+                if(b.isOn) {
+                    manager.setButton(b.x, b.y, 0);
+                    b.isOn = false;
+                } else {
+                    manager.setButton(b.x, b.y, b.c);
+                    b.isOn = true;
+                }
+            };
+        });
+        this.flashingTimer.interval = 500;
+        this.flashingTimer.repeat();
+
         this.track_devices = {};
         var iTracks = this.liveSet.getcount('tracks');
         for(var i=0; i < iTracks; i++) {
-            var device = new LiveAPI('live_set tracks ' + i);
-            this.track_devices[i] = device;
+            if(i < 8) {
+                var device = new LiveAPI('live_set tracks ' + i);
+                this.track_devices[i] = device;
+            }
         }
 
         this.track_offset = 0;
@@ -203,8 +211,8 @@ function LooperManager() {
         this.bInit = true;
     };
 
-    this.setButtonColor = function(x, y, c) {
-//        log('Manager.setButtonColor', x, y, c);
+    this.setButton = function(x, y, c) {
+//        log('LooperManager.setButton', x, y, c);
         outlet(1, ['set', x, y, c]);
     };
 
@@ -220,24 +228,24 @@ function LooperManager() {
             var bBufferFilled = this.loopers[iTrack].bBufferFilled;
             if(name == 'State') {
                 if(value == 0) { // stop
-                    this.setButtonColor(iTrack, 0, bBufferFilled ? 123 : 0)
-                    this.setButtonColor(iTrack, 1, bBufferFilled ? 7 : 0)
-                    this.setButtonColor(iTrack, 2, bBufferFilled ? 7 : 0)
+                    this.setButton(iTrack, 0, bBufferFilled ? 123 : 0)
+                    this.setButton(iTrack, 1, bBufferFilled ? 7 : 0)
+                    this.setButton(iTrack, 2, bBufferFilled ? 7 : 0)
                 } else if(value == 1) { // rec
-                    this.setButtonColor(iTrack, 0, 5)
-                    this.setButtonColor(iTrack, 1, 5)
-                    this.setButtonColor(iTrack, 2, 7)
+                    this.setButton(iTrack, 0, 5)
+                    this.setButton(iTrack, 1, 5)
+                    this.setButton(iTrack, 2, 7)
                 } else if(value == 2) { // play
-                    this.setButtonColor(iTrack, 0, 21)
-                    this.setButtonColor(iTrack, 1, 5)
-                    this.setButtonColor(iTrack, 2, 7)
+                    this.setButton(iTrack, 0, 21)
+                    this.setButton(iTrack, 1, 5)
+                    this.setButton(iTrack, 2, 7)
                 } else if(value == 3) { // dub
-                    this.setButtonColor(iTrack, 0, 85)
-                    this.setButtonColor(iTrack, 1, 5)
-                    this.setButtonColor(iTrack, 2, 7)
+                    this.setButton(iTrack, 0, 85)
+                    this.setButton(iTrack, 1, 5)
+                    this.setButton(iTrack, 2, 7)
                 }
             } else if(name == 'Reverse') {
-                this.setButtonColor(iTrack, 3, parseInt(value) ? 45 : 43); // 43 is light blue;
+                this.setButton(iTrack, 3, parseInt(value) ? 45 : 43); // 43 is light blue;
             }
         }
     };
@@ -266,12 +274,13 @@ function LooperManager() {
             }
             for(var row=7; row >= 4; row--) {
                 var isLit = row > (7 - nCells);
-                this.setButtonColor(param.track_index + this.track_offset, row, isLit ? color : 0);
+                this.setButton(param.track_index + this.track_offset, row, isLit ? color : 0);
             }
         }
     };
 
     this.repaintAll = function() {
+        log('repaintAll');
         outlet(1, 'clear');
         for(var i in this.loopers) {
             var looper = this.loopers[i];
@@ -290,6 +299,7 @@ function LooperManager() {
         for(var i in this.loopers) {
             i = parseInt(i);
             var looper = this.loopers[i];
+            looper.bBufferFilled = false;
             send_note(i + 8); // stop
             send_note(i + 16); // clear
         }
@@ -344,6 +354,7 @@ function LooperManager() {
                                 if(i != iTrack && looper.queuedVelocity != null) {
                                     DEBUG('*** STARTING:', i, looper.queuedVelocity);
                                     send_note(i, looper.queuedVelocity);
+                                    this.stopFlashingButton(i, 0);
                                     looper.queuedVelocity = null;
                                     if(ARM_TRACK_ON_RECORD) {
                                         this.armTrack(i);
@@ -357,7 +368,7 @@ function LooperManager() {
                         DEBUG('*** QUEUING: ', iTrack, ', ', vel);
                         var looper = this.loopers[iTrack];
                         looper.queuedVelocity = vel;
-                        // TODO: flash transport button on push grid
+                        this.startFlashingButton(iTrack - this.track_offset, 0, 5);
                     }
 
                     // ignore note-off here
@@ -391,12 +402,11 @@ function LooperManager() {
         }
     };
 
-
     this.armTrack = function(iTrack, exclusive) {
         if(iTrack == this.ignore_track) { // i.e. vocals
             return;
         }
-        if(exclusive == undefined) {
+        if(exclusive === undefined) {
             exclusive = true;
         }
         for(var i in this.track_devices) {
@@ -410,8 +420,30 @@ function LooperManager() {
         }
     };
 
+    // TODO: replace with instrument groups
     this.setIgnoreTrack = function(iTrack) {
         this.ignore_track = parseInt(iTrack);
+    };
+
+    this.startFlashingButton = function(x, y, c) {
+        if(x < 0 || x >= 8) { // track_offset
+            return;
+        }
+        var i = x + y * 8;
+        this.flashingButtons[i] = { x: x, y: y, c: c, isOn: false };
+        log('stopFlashingButton: this.setButton', x, y, 0);
+        this.setButton(x, y, 0);
+    };
+
+    this.stopFlashingButton = function(x, y) {
+        if(x < 0 || x >= 8) { // track_offset
+            return;
+        }
+        var i = x + y * 8;
+        var b = this.flashingButtons[i];
+        delete this.flashingButtons[i];
+        log('stopFlashingButton: this.setButton', b);
+        this.setButton(b.x, b.y, b.c);
     };
 
 };
@@ -472,7 +504,7 @@ function set_ignore_track(x) {
 
 
 function push_button(x, y, velocity) {
-    log('pk.push_looper.push_button()', x, y, velocity);
+//    log('pk.push_looper.push_button()', x, y, velocity);
     var iTrack = x - manager.track_offset;
     var looper = manager.loopers[iTrack];
     if(looper) {

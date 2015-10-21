@@ -1,0 +1,25 @@
+ CRITICAL
+ - LiveAPI init errors on load set
+ - Push buttons don't work
+ - arm on push buttons (default: disabled)
+   - but always arm on record even on Push
+ - crackles at start of transport
+ - 'clear all' on note 32 flashes opaque on grid before clear
+ - replace hard-coded 8 track_device count assigment in init
+ - track offset
+ - implement session view control
+ - tempo click/flash
+ - instrument groups for arming.
+   - Only change arm for instruments in group. I.e. Violin group, vocal group, bass group, midi group (for push grid). How to add tracks to a group via max ui? Maybe just list tracks and add number box to map to group. Sick
+ - Finish Max UI
+
+ WISH LIST
+ - options:
+   - Sustain pedal mode
+ - allow playing piano while looping with bass
+ - output visual pulse on loop restart?
+ - Push UI doesn't update when looper State changes on it's own.
+ - destruct doPoll timer on reload (forum)
+
+ FORUMS
+ - call js function on [freebang]? Max freezes up...
