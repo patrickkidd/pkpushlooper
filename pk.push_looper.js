@@ -114,7 +114,6 @@ function LooperManager() {
         });
         this.initTask.schedule(500);
     };
-    this.initDefered();
 
     this.bInit = false;
     this.init = function() {
@@ -124,13 +123,16 @@ function LooperManager() {
             return;
         }
 
-        log('LooperManager.init');
+//        log('LooperManager.init');
 
-        this.liveSet = LiveAPI('live_set');
-        this.liveSetView = LiveAPI('live_set view');
+        this.liveSet = new LiveAPI('live_set');
+        this.liveSetView = new LiveAPI('live_set view');
 
         this.flashingButtons = {};
         this.flashingTimer = new Task(function() {
+            if(!manager) {
+                return;
+            }
             var nKeys = Object.keys(manager.flashingButtons).length;
             if(nKeys == 0) {
                 return;
@@ -228,24 +230,24 @@ function LooperManager() {
             var bBufferFilled = this.loopers[iTrack].bBufferFilled;
             if(name == 'State') {
                 if(value == 0) { // stop
-                    this.setButton(iTrack, 0, bBufferFilled ? 123 : 0)
-                    this.setButton(iTrack, 1, bBufferFilled ? 7 : 0)
-                    this.setButton(iTrack, 2, bBufferFilled ? 7 : 0)
+                    this.setButton(iTrack, 0, bBufferFilled ? 84 : 0)
+                    this.setButton(iTrack, 1, bBufferFilled ? 66 : 0)
+                    this.setButton(iTrack, 2, bBufferFilled ? 66 : 0)
                 } else if(value == 1) { // rec
-                    this.setButton(iTrack, 0, 5)
-                    this.setButton(iTrack, 1, 5)
-                    this.setButton(iTrack, 2, 7)
+                    this.setButton(iTrack, 0, 127)
+                    this.setButton(iTrack, 1, 127)
+                    this.setButton(iTrack, 2, 66)
                 } else if(value == 2) { // play
-                    this.setButton(iTrack, 0, 21)
-                    this.setButton(iTrack, 1, 5)
-                    this.setButton(iTrack, 2, 7)
+                    this.setButton(iTrack, 0, 13)
+                    this.setButton(iTrack, 1, 127)
+                    this.setButton(iTrack, 2, 66)
                 } else if(value == 3) { // dub
-                    this.setButton(iTrack, 0, 85)
-                    this.setButton(iTrack, 1, 5)
-                    this.setButton(iTrack, 2, 7)
+                    this.setButton(iTrack, 0, 9)
+                    this.setButton(iTrack, 1, 127)
+                    this.setButton(iTrack, 2, 66)
                 }
             } else if(name == 'Reverse') {
-                this.setButton(iTrack, 3, parseInt(value) ? 45 : 43); // 43 is light blue;
+                this.setButton(iTrack, 3, parseInt(value) ? 126 : 94); // 43 is light blue;
             }
         }
     };
@@ -280,7 +282,7 @@ function LooperManager() {
     };
 
     this.repaintAll = function() {
-        log('repaintAll');
+//        log('repaintAll');
         outlet(1, 'clear');
         for(var i in this.loopers) {
             var looper = this.loopers[i];
@@ -402,6 +404,14 @@ function LooperManager() {
         }
     };
 
+    this.onSelectedTrack = function(x) {
+        if(x < 7) {
+            outlet(1, 'grab');
+        } else {
+            outlet(1, 'release');
+        }
+    };
+
     this.armTrack = function(iTrack, exclusive) {
         if(iTrack == this.ignore_track) { // i.e. vocals
             return;
@@ -452,15 +462,15 @@ function LooperManager() {
 log("__________________________  pk.push_looper.js: ____________________________");
 
 var manager = new LooperManager();
-
+manager.initDefered();
 
 function push_api_init() {
-    log('pk.push_looper.push_api_init()');
+//    log('pk.push_looper.push_api_init()');
     manager.init();
 }
 
 function push_found() {
-    log('pk.push_looper.push_found()');
+//    log('pk.push_looper.push_found()');
     // update the push
     manager.repaintAll();
 }
@@ -472,7 +482,7 @@ function push_disconnected() {
 }
 
 function push_track_offset(x) {
-    log('pk.push_track_offset()', x);
+//    log('pk.push_track_offset()', x);
     manager.setTrackOffset(x);
 }
 
@@ -529,3 +539,11 @@ function send_note(note, vel) {
     outlet(0, [144, note, 0]);
 }
 
+var repaintTask = new Task(function() {
+    manager.repaintAll();
+});
+
+function selected_track(x) {
+    manager.onSelectedTrack(x);
+    repaintTask.schedule(0); // doesn't work when run immediately for some reason.
+}

@@ -126,6 +126,12 @@ function UI() {
     // MAGENTA = RgbColor(53)
     // PINK = RgbColor(57)
 
+    /*
+     84: alpha green
+     94/96: alpha blue
+     66: alpha red
+     */
+
 
 var DEV_NAME = 'Push';
 var PUSH_VERSION = 2;
@@ -212,6 +218,7 @@ function Push(options) {
                     this.api = api;
                     var gridId = this.api.call('get_control_by_name', 'Button_Matrix');
                     this.grid = new LiveAPI(function(x, y, z) {
+//                        log('Button_Matrix: ', x, y, z);
                         if(x[0] == 'value' && x[1] != 'bang' && options.onButtonEvent) {
                             options.onButtonEvent(x[2], x[3], x[1]);
                         }
@@ -327,26 +334,26 @@ function doPoll() {
 doPoll.local = true;
 
 
-
-
 var app = {
 
-    ui: true,
+    ui: false,
 
     onLiveAPIInit: function() {
         PKPushState.bAPIInit = true;
         outlet(0, 'push_api_init');
     },
     onPushFound: function() {
-        push.grabGrid();
-        push.setImage(PK_IMAGE);
+//        push.grabGrid();
+//        push.setImage(PK_IMAGE);
         outlet(0, 'push_found');
     },
     onPushConnected: function() {
         this.track_offset = 0;
         var id = push.api.call('get_component_by_name', 'Session_Ring'); // Thank you Push 2!
-        this.Session_Ring = new LiveAPI(function() { }, id);
-        function onControl(x) {
+        app.Session_Ring = new LiveAPI();
+        app.Session_Ring.id = id[1];
+        log('** Session_Ring: ' + id[1]);
+        function onControl(x, y, z) {
             if(x[0] == 'value' && x[1] != 'bang' && x[1] > 0) {
                 var value = x[1];
                 var name = this.get('name');
@@ -369,7 +376,7 @@ var app = {
         outlet(0, 'push_disconnected');
     },
     onButtonEvent: function(x, y, velocity) {
-        log('onButtonEvent', x, y, velocity);
+//        log('onButtonEvent', x, y, velocity);
 	      outlet(0, ['push_button', x, y, velocity]);
     },
     
