@@ -431,7 +431,7 @@ function LooperManager() {
         }
         var i = x + y * 8;
         this.flashingButtons[i] = { x: x, y: y, c: c, isOn: false };
-        log('stopFlashingButton: this.setButton', x, y, 0);
+//        log('stopFlashingButton: this.setButton', x, y, 0);
         this.setButton(x, y, 0);
     };
 
@@ -442,7 +442,7 @@ function LooperManager() {
         var i = x + y * 8;
         var b = this.flashingButtons[i];
         delete this.flashingButtons[i];
-        log('stopFlashingButton: this.setButton', b);
+//        log('stopFlashingButton: this.setButton', b);
         this.setButton(b.x, b.y, b.c);
     };
 

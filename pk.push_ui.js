@@ -27,6 +27,8 @@ function log() {
   post("\n");
 }
 
+
+
 var _patcher = this.patcher;
 
 PKPushState = new Global('PKPushState');
@@ -60,26 +62,36 @@ function UI() {
 		        return;
 	      };
 //        log('UI.setButton', x, y, c);
-	      if(c == 5) { // red
-		        o.message('bgcolor', 1, 0, 0, 1);
-        } else if(c == 7) { // alpha red
-		        o.message('bgcolor', 1, 0, 0, .4);
-        } else if(c == 13) {
-        } else if(c == 21) { // yellow
-		        o.message('bgcolor', 1, 0.93725490196078, 0.2156862745098, 1);
-        } else if(c == 43) { // alpha blue
-		        o.message('bgcolor', 0, 0, 1, .4);
-        } else if(c == 45) { // blue
-		        o.message('bgcolor', 0, 0, 1, 1);
-        } else if(c == 84) {
-        } else if(c == 85) { // dub brown
-		        o.message('bgcolor', 0.96078431372549, 0.41960784313725, 0.03921568627451, 1);
-        } else if(c == 86) {
-        } else if(c == 123) { // alpha green
-		        o.message('bgcolor', 0, 1, 0, .4);
-	      } else {
-		        o.message('bgcolor', 1, 1, 1, 1);
-	      }
+        if(PUSH_VERSION == 1) {
+	          if(c == 5) { // red
+		            o.message('bgcolor', 1, 0, 0, 1);
+            } else if(c == 7) { // alpha red
+		            o.message('bgcolor', 1, 0, 0, .4);
+            } else if(c == 13) {
+            } else if(c == 21) { // yellow
+		            o.message('bgcolor', 1, 0.93725490196078, 0.2156862745098, 1);
+            } else if(c == 43) { // alpha blue
+		            o.message('bgcolor', 0, 0, 1, .4);
+            } else if(c == 45) { // blue
+		            o.message('bgcolor', 0, 0, 1, 1);
+            } else if(c == 84) {
+            } else if(c == 85) { // dub brown
+		            o.message('bgcolor', 0.96078431372549, 0.41960784313725, 0.03921568627451, 1);
+            } else if(c == 86) {
+            } else if(c == 123) { // alpha green
+		            o.message('bgcolor', 0, 1, 0, .4);
+	          } else {
+		            o.message('bgcolor', 1, 1, 1, 1);
+	          }
+        } else {
+            if(c == 127) { // red
+		            o.message('bgcolor', 1, 0, 0, 1);
+            } else if(c == 126) { // green 
+                o.message('bgcolor', 0, 1, 0, 1);
+            } else if(c == 125) { // blue 
+		            o.message('bgcolor', 0, 0, 1, 1);
+            }
+        }
     };
 
     this.clearAllButtons = function() {
@@ -95,8 +107,28 @@ function UI() {
 
 // PUSH HARDWARE
 
+    // BLACK = RgbColor(0)
+    // DARK_GREY = RgbColor(1)
+    // GREY = RgbColor(2)
+    // WHITE = RgbColor(3)
+    // RED = RgbColor(5)
+    // AMBER = RgbColor(9)
+    // YELLOW = RgbColor(13)
+    // LIME = RgbColor(17)
+    // GREEN = RgbColor(21)
+    // SPRING = RgbColor(25)
+    // TURQUOISE = RgbColor(29)
+    // CYAN = RgbColor(33)
+    // SKY = RgbColor(37)
+    // OCEAN = RgbColor(41)
+    // BLUE = RgbColor(45)
+    // ORCHID = RgbColor(49)
+    // MAGENTA = RgbColor(53)
+    // PINK = RgbColor(57)
+
 
 var DEV_NAME = 'Push';
+var PUSH_VERSION = 2;
 
 var PK_IMAGE = [
     [5, 5, 5, 0, 5, 0, 0, 5],
@@ -172,7 +204,7 @@ function Push(options) {
         var exists = false;
 	      for(var i=0; i < 6; i++) {
 		        var api = new LiveAPI("control_surfaces " + i);
-            if(api.type == DEV_NAME) {
+            if(api.type.indexOf(DEV_NAME) == 0) { // 'Push' & 'Push2'
                 var thisId = this.api != null ? this.api.id : null;
                 if(this.api && this.api.id == api.id) {
                     exists = true;
@@ -180,7 +212,6 @@ function Push(options) {
                     this.api = api;
                     var gridId = this.api.call('get_control_by_name', 'Button_Matrix');
                     this.grid = new LiveAPI(function(x, y, z) {
-                        log('Button_Matrix', x, y, z);
                         if(x[0] == 'value' && x[1] != 'bang' && options.onButtonEvent) {
                             options.onButtonEvent(x[2], x[3], x[1]);
                         }
@@ -312,58 +343,26 @@ var app = {
         outlet(0, 'push_found');
     },
     onPushConnected: function() {
-        this.session_component = null;
         this.track_offset = 0;
-        var pollSessionTask = new Task(function() {
-            var x = push.api.call('highlighting_session_component');
-            if(x[0] == 'id' && x[1] != 0) {
-                app.session_component = new LiveAPI('id ' + x[1]);
-            }
-        });
-        pollSessionTask.schedule(0);
+        var id = push.api.call('get_component_by_name', 'Session_Ring'); // Thank you Push 2!
+        this.Session_Ring = new LiveAPI(function() { }, id);
         function onControl(x) {
             if(x[0] == 'value' && x[1] != 'bang' && x[1] > 0) {
                 var value = x[1];
                 var name = this.get('name');
                 if(name == 'Left_Arrow' || name == 'Right_Arrow') {
-                    if(app.session_component) {
-                        var track_offset = app.session_component.call('track_offset');
-                        if(track_offset != app.track_offset) {
-                            app.track_offset = track_offset;
-                            outlet(0, 'push_track_offset', app.track_offset)
-                        }
-                    }
-                } else if(name == 'Session_Mode_Button' || name == 'Note_Mode_Button') {
-                    // created upon entering session mode
-                    if(app.session_component == null) {
-                        pollSessionTask.schedule(0); // defer ctor
+                    var track_offset = app.Session_Ring.get('track_offset');
+                    if(track_offset != app.track_offset) {
+                        app.track_offset = track_offset;
+                        outlet(0, 'push_track_offset', app.track_offset)
                     }
                 }
             }
         }
-        var names = ['Left_Arrow', 'Right_Arrow', 'Session_Mode_Button', 'Note_Mode_Button'];
-        for(var k in names) {
-            this[names[k]] = null;
-        }
-        var ctl = null;
-        var controls = push.api.get('controls');
-        for(var i=0; i < controls.length; i++) {
-            var x = controls[i];
-            if(x != 'id') {
-                if(ctl == null) {
-                    ctl = new LiveAPI(onControl);
-                }
-                ctl.id = x;
-                var name = ctl.get('name');
-                for(var k in names) {
-                    if(names[k] == name) {
-                        ctl.property = 'value'
-                        this[name] = ctl;
-                        ctl = null;
-                    }
-                }
-            }
-        }
+        this.Left_Arrow = new LiveAPI(onControl, push.api.call('get_control_by_name', 'Left_Arrow'));
+        this.Left_Arrow.property = 'value';
+        this.Right_Arrow = new LiveAPI(onControl, push.api.call('get_control_by_name', 'Right_Arrow'));
+        this.Right_Arrow.property = 'value';
         outlet(0, 'push_connected');
     },
     onPushDisconnected: function() {
@@ -412,6 +411,10 @@ function clear() {
 
 function set_pk() {
     push.setPK();
+}
+
+function set_all(c) {
+    push.setAllButtons(c);
 }
 
 // set button colors
