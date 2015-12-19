@@ -336,10 +336,11 @@ doPoll.local = true;
 
 var app = {
 
-    ui: false,
+    ui: true,
 
     onLiveAPIInit: function() {
         PKPushState.bAPIInit = true;
+
         outlet(0, 'push_api_init');
     },
     onPushFound: function() {
@@ -349,19 +350,32 @@ var app = {
     },
     onPushConnected: function() {
         this.track_offset = 0;
-        var id = push.api.call('get_component_by_name', 'Session_Ring'); // Thank you Push 2!
-        app.Session_Ring = new LiveAPI();
-        app.Session_Ring.id = id[1];
-        log('** Session_Ring: ' + id[1]);
+        this.Session_Ring = null;
+        function InitSR() {
+            var id = push.api.call('get_component_by_name', 'Session_Ring')[1]; // Thank you Push 2!
+            app.Session_Ring = new LiveAPI();
+            app.Session_Ring.id = id;
+            if(app.Session_Ring.id == 0) {
+                log("Could not find Push Session_Ring, defering...");
+                if(!app.sr_task) {
+                    app.sr_task = new Task(InitSR);
+                }
+                app.sr_task.schedule(500);
+            }
+        }
+        InitSR();
         function onControl(x, y, z) {
             if(x[0] == 'value' && x[1] != 'bang' && x[1] > 0) {
                 var value = x[1];
-                var name = this.get('name');
-                if(name == 'Left_Arrow' || name == 'Right_Arrow') {
-                    var track_offset = app.Session_Ring.get('track_offset');
-                    if(track_offset != app.track_offset) {
-                        app.track_offset = track_offset;
-                        outlet(0, 'push_track_offset', app.track_offset)
+                if(value == 127) {
+                    var name = this.get('name');
+                    if(name == 'Left_Arrow' || name == 'Right_Arrow') {
+                        //                    log('onControl, Session_Ring: ', app.Session_Ring.id);
+                        var track_offset = app.Session_Ring.get('track_offset');
+                        if(track_offset != app.track_offset) {
+                            app.track_offset = track_offset;
+                            outlet(0, 'push_track_offset', app.track_offset)
+                        }
                     }
                 }
             }

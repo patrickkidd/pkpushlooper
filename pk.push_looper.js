@@ -129,28 +129,6 @@ function LooperManager() {
         this.liveSetView = new LiveAPI('live_set view');
 
         this.flashingButtons = {};
-        this.flashingTimer = new Task(function() {
-            if(!manager) {
-                return;
-            }
-            var nKeys = Object.keys(manager.flashingButtons).length;
-            if(nKeys == 0) {
-                return;
-            }
-//            log('flashingTimer', manager.flashingButtons);
-            for(var i in manager.flashingButtons) {
-                var b = manager.flashingButtons[i];
-                if(b.isOn) {
-                    manager.setButton(b.x, b.y, 0);
-                    b.isOn = false;
-                } else {
-                    manager.setButton(b.x, b.y, b.c);
-                    b.isOn = true;
-                }
-            };
-        });
-        this.flashingTimer.interval = 500;
-        this.flashingTimer.repeat();
 
         this.track_devices = {};
         var iTracks = this.liveSet.getcount('tracks');
@@ -219,12 +197,13 @@ function LooperManager() {
     };
 
     this.setTrackOffset = function(x) {
+//        log('Manager.setTrackOffset', x);
         this.track_offset = x;
-        this.repaintAll();
+//        this.repaintAll(); // already painting from selected_track()
     };
 
     this.paintLooperPart = function(track_index, name, value) {
-//        log('Manager.paintLooperPart', track_index, name, value);
+//        log('Manager.paintLooperPart', track_index, name, value, this.track_offset);
         var iTrack = track_index - this.track_offset;
         if(iTrack >= 0 && iTrack <= 7) { // ignore off-screen
             var bBufferFilled = this.loopers[iTrack].bBufferFilled;
@@ -282,7 +261,7 @@ function LooperManager() {
     };
 
     this.repaintAll = function() {
-//        log('repaintAll');
+        log('Manager.repaintAll');
         outlet(1, 'clear');
         for(var i in this.loopers) {
             var looper = this.loopers[i];
@@ -456,6 +435,25 @@ function LooperManager() {
         this.setButton(b.x, b.y, b.c);
     };
 
+
+    this.flashButtons = function() {
+        var nKeys = Object.keys(this.flashingButtons).length;
+        if(nKeys == 0) {
+            return;
+        }
+        //            log('flashingTimer', this.flashingButtons);
+        for(var i in this.flashingButtons) {
+            var b = this.flashingButtons[i];
+            if(b.isOn) {
+                this.setButton(b.x, b.y, 0);
+                b.isOn = false;
+            } else {
+                this.setButton(b.x, b.y, b.c);
+                b.isOn = true;
+            }
+        };
+    };
+
 };
 
 
@@ -546,4 +544,12 @@ var repaintTask = new Task(function() {
 function selected_track(x) {
     manager.onSelectedTrack(x);
     repaintTask.schedule(0); // doesn't work when run immediately for some reason.
+}
+
+
+// put the timer as an external to avoid duplicate js timer bug on autowatch.
+function do_flash() {
+    if(manager) {
+        manager.flashButtons();
+    }
 }
