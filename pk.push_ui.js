@@ -27,6 +27,9 @@ function log() {
   post("\n");
 }
 
+function DEBUG() {
+}
+//DEBUG = log;
 
 
 var _patcher = this.patcher;
@@ -356,7 +359,7 @@ var app = {
             app.Session_Ring = new LiveAPI();
             app.Session_Ring.id = id;
             if(app.Session_Ring.id == 0) {
-                log("Could not find Push Session_Ring, defering...");
+                DEBUG("Could not find Push Session_Ring, defering...");
                 if(!app.sr_task) {
                     app.sr_task = new Task(InitSR);
                 }
@@ -364,18 +367,21 @@ var app = {
             }
         }
         InitSR();
+        this.track_offset_task = new Task(function() {
+            var track_offset = app.Session_Ring.get('track_offset');
+            if(track_offset != app.track_offset) {
+                app.track_offset = track_offset;
+                outlet(0, 'push_track_offset', app.track_offset)
+            }
+        });
         function onControl(x, y, z) {
             if(x[0] == 'value' && x[1] != 'bang' && x[1] > 0) {
                 var value = x[1];
                 if(value == 127) {
+                    // log('onControl, Session_Ring: ', app.Session_Ring.id);
                     var name = this.get('name');
                     if(name == 'Left_Arrow' || name == 'Right_Arrow') {
-                        //                    log('onControl, Session_Ring: ', app.Session_Ring.id);
-                        var track_offset = app.Session_Ring.get('track_offset');
-                        if(track_offset != app.track_offset) {
-                            app.track_offset = track_offset;
-                            outlet(0, 'push_track_offset', app.track_offset)
-                        }
+                        app.track_offset_task.schedule(0);
                     }
                 }
             }

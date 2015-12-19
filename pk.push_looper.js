@@ -5,7 +5,6 @@ outlets = 2;
 PKPushState = new Global('PKPushState');
 
 // constants
-STOP_TRANSPORT_ON_CLEAR = true;
 ARM_TRACK_ON_RECORD = true;
 
 function toInt(f) {
@@ -197,9 +196,9 @@ function LooperManager() {
     };
 
     this.setTrackOffset = function(x) {
-//        log('Manager.setTrackOffset', x);
+        log('Manager.setTrackOffset', x);
         this.track_offset = x;
-//        this.repaintAll(); // already painting from selected_track()
+        this.repaintAll(); // already painting from selected_track()
     };
 
     this.paintLooperPart = function(track_index, name, value) {
@@ -217,16 +216,16 @@ function LooperManager() {
                     this.setButton(iTrack, 1, 127)
                     this.setButton(iTrack, 2, 66)
                 } else if(value == 2) { // play
-                    this.setButton(iTrack, 0, 13)
+                    this.setButton(iTrack, 0, 126)
                     this.setButton(iTrack, 1, 127)
                     this.setButton(iTrack, 2, 66)
                 } else if(value == 3) { // dub
-                    this.setButton(iTrack, 0, 9)
+                    this.setButton(iTrack, 0, 3)
                     this.setButton(iTrack, 1, 127)
                     this.setButton(iTrack, 2, 66)
                 }
             } else if(name == 'Reverse') {
-                this.setButton(iTrack, 3, parseInt(value) ? 126 : 94); // 43 is light blue;
+                this.setButton(iTrack, 3, parseInt(value) ? 125 : 94); // 43 is light blue;
             }
         }
     };
@@ -261,7 +260,7 @@ function LooperManager() {
     };
 
     this.repaintAll = function() {
-        log('Manager.repaintAll');
+        DEBUG('Manager.repaintAll');
         outlet(1, 'clear');
         for(var i in this.loopers) {
             var looper = this.loopers[i];
@@ -274,20 +273,22 @@ function LooperManager() {
 
     // clear all loopers, reset looper states and message queues
     this.clearAll = function() {
-        DEBUG('LooperManager.clearAll()');
-        this.firstLooperStart = null;
-        this.firstLooperFinishedRecording = null;
-        for(var i in this.loopers) {
-            i = parseInt(i);
-            var looper = this.loopers[i];
-            looper.bBufferFilled = false;
-            send_note(i + 8); // stop
-            send_note(i + 16); // clear
-        }
-        if(STOP_TRANSPORT_ON_CLEAR) {
+        var is_playing = this.liveSet.get('is_playing');
+        if(is_playing == 1) {
             this.liveSet.call('stop_playing');
+        } else {
+            DEBUG('LooperManager.clearAll(): ');
+            this.firstLooperStart = null;
+            this.firstLooperFinishedRecording = null;
+            for(var i in this.loopers) {
+                i = parseInt(i);
+                var looper = this.loopers[i];
+                looper.bBufferFilled = false;
+                send_note(i + 8); // stop
+                send_note(i + 16); // clear
+            }
+            this.repaintAll();
         }
-        this.repaintAll();
     };
 
     // 00-07 => transport
@@ -437,6 +438,9 @@ function LooperManager() {
 
 
     this.flashButtons = function() {
+        if(! this.flashingButtons) {
+            return;
+        }
         var nKeys = Object.keys(this.flashingButtons).length;
         if(nKeys == 0) {
             return;
@@ -498,7 +502,7 @@ function midi_cc(num, val) {
 }
 
 
-function clear_all() {
+function stop_n_clear() {
     manager.clearAll();
 }
 
@@ -508,6 +512,10 @@ function set_arm_track_on_record(x) {
 
 function set_ignore_track(x) {
     manager.setIgnoreTrack(x);
+}
+
+function repaint_all() {
+    manager.repaintAll();
 }
 
 
@@ -549,6 +557,7 @@ function selected_track(x) {
 
 // put the timer as an external to avoid duplicate js timer bug on autowatch.
 function do_flash() {
+    log('do_flash');
     if(manager) {
         manager.flashButtons();
     }
